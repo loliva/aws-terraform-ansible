@@ -1,0 +1,9 @@
+- become: yes
+  hosts: all
+  name: install
+  tasks:
+    - name: Install nginx
+      apt:
+        name: nginx
+        update_cache: yes
+        state: latest
