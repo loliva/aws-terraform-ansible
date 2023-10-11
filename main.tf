@@ -6,17 +6,15 @@ data "aws_availability_zones" "available" {}
 
 module "vpc" {
   source  = "terraform-aws-modules/vpc/aws"
-  version = "2.77.0"
-  name                 = "${var.vpc_name}-${var.env}"   # variable concatenada
-  cidr                 = var.vpc_cidr
-  azs                  = data.aws_availability_zones.available.names
-  public_subnets       = var.vpc_public_subnets
-  private_subnets      = var.vpc_private_subnets
-  enable_nat_gateway = true
-  single_nat_gateway = true
+  version = "3.19.0"
+  name = "poc-vpc"
+  cidr = "10.0.0.0/16"
+  azs  = slice(data.aws_availability_zones.available.names, 0, 3)
+  private_subnets = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+  public_subnets  = ["10.0.4.0/24", "10.0.5.0/24", "10.0.6.0/24"]
+  enable_nat_gateway   = false
+  single_nat_gateway   = false
   enable_dns_hostnames = true
-  one_nat_gateway_per_az = false
-  enable_dns_support   = true
 }
 
 resource "aws_security_group" "sg_ec2" {
@@ -42,21 +40,17 @@ resource "aws_security_group" "sg_ec2" {
   }
 
   tags = {
-    Name = "instance-ec2"
+    Name = "lamp"
   }
 }
 
-data "aws_ami" "ubuntu" {
+data "aws_ami" "amazon_linux" {
   most_recent = true
+  owners      = ["amazon"]
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+    values = ["amzn2-ami-ecs-hvm-2.0.202*-x86_64-ebs"]
   }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-  owners = ["099720109477"] # Canonical
 }
 
 
@@ -86,7 +80,7 @@ module "ec2_public" {
   version = "~> 3.0"
   create  = var.ec2_instance_create
   name = var.ec2_instance_name
-  ami                    = data.aws_ami.ubuntu.id
+  ami                    = data.aws_ami.amazon_linux.id
   instance_type          = var.ec2_instance_type
   key_name               = aws_key_pair.generated_key.key_name
   monitoring             = false
@@ -98,20 +92,6 @@ module "ec2_public" {
   //apt install postgresql-client-12 python3-psycopg2 python3 -y
   //EOL
 }
-module "ec2_private" {
-  source  = "terraform-aws-modules/ec2-instance/aws"
-  version = "~> 3.0"
-  for_each = toset(["one", "two"])
-  create  = var.ec2_instance_create
-  name = "private-instance-${each.key}"
-  ami                    = data.aws_ami.ubuntu.id
-  instance_type          = var.ec2_instance_type
-  key_name               = aws_key_pair.generated_key.key_name
-  monitoring             = false
-  vpc_security_group_ids = [aws_security_group.sg_ec2.id]
-  subnet_id              = module.vpc.private_subnets[0]
-}
-
 resource "null_resource" "toec2" {
   triggers = {
     always_run = "${timestamp()}"
@@ -121,7 +101,7 @@ resource "null_resource" "toec2" {
     connection {
       host        = module.ec2_public.public_ip
       type        = "ssh"
-      user        = "ubuntu"
+      user        = "ec2-user"
       private_key = "${tls_private_key.ec2_instance.private_key_openssh}"
     }
   }
@@ -131,7 +111,7 @@ resource "null_resource" "toec2" {
       SOME_VAR = "VALUE"
     }
     command = <<-EOL
-      ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -u ubuntu -i '${module.ec2_public.public_ip},' --private-key ./${var.generated_key_name}.pem ansible/install.yml
+      ANSIBLE_HOST_KEY_CHECKING=False ansible-playbook -u ec2-user -i '${module.ec2_public.public_ip},' --private-key ./${var.generated_key_name}.pem ansible/install.yml
       rm -rfv ./${var.generated_key_name}.pem
     EOL
   }

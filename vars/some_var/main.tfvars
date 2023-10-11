@@ -1,8 +1,4 @@
-region="us-west-1"
-vpc_name="example-vpc"
-vpc_cidr="10.0.0.0/16"
-vpc_public_subnets=["10.0.50.0/24", "10.0.51.0/24", "10.0.52.0/24"]
-vpc_private_subnets=["10.0.70.0/24", "10.0.71.0/24", "10.0.72.0/24"]
+region="us-east-1"
 ec2_instance_name="ec2-instance-example"
 ec2_instance_type="t2.micro"
 ec2_instance_create=true
